@@ -6,7 +6,7 @@ name: 构建发布Flutter应用
 on:
   push:
     paths:
-      - 'pubspec.yaml'
+      - "pubspec.yaml"
     branches:
       - main
 jobs:
@@ -44,7 +44,7 @@ jobs:
       - name: 设置Flutter环境
         uses: subosito/flutter-action@v2
         with:
-          channel: 'stable'
+          channel: "stable"
 
       - name: 拉取代码
         uses: actions/checkout@v3
@@ -55,8 +55,8 @@ jobs:
       - name: 设置java环境
         uses: actions/setup-java@v2
         with:
-          distribution: 'adopt'
-          java-version: '11.x'
+          distribution: "adopt"
+          java-version: "11.x"
 
       - name: 运行代码生成器
         run: dart run build_runner build
@@ -89,7 +89,7 @@ jobs:
       - name: 设置Flutter环境
         uses: subosito/flutter-action@v2
         with:
-          channel: 'stable'
+          channel: "stable"
 
       - name: 安装ninja、libgtk
         run: |
@@ -98,18 +98,18 @@ jobs:
 
       - name: 安装依赖项
         run: flutter pub get
-#        working-directory: forum_mobile
+      #        working-directory: forum_mobile
 
       - name: 配置桌面
         run: flutter config --enable-linux-desktop
-#        working-directory: forum_mobile
+      #        working-directory: forum_mobile
 
       - name: 运行代码生成器
         run: dart run build_runner build
 
       - name: 编译linux
         run: flutter build linux
-#        working-directory: forum_mobile
+      #        working-directory: forum_mobile
 
       - name: 压缩生成的文件
         run: tar -zcvf "MoeKey-${{ needs.pre-build.outputs.APP_VERSION }}-linux-x86_64-release.tar.gz" --directory=build/linux/x64/release/bundle .
@@ -131,38 +131,90 @@ jobs:
       - name: 设置Flutter环境
         uses: subosito/flutter-action@v2
         with:
-          channel: 'stable'
+          channel: "stable"
 
       - name: 安装依赖项
         run: flutter pub get
-#        working-directory: forum_mobile
+      #        working-directory: forum_mobile
 
       - name: 启动windows桌面
         run: flutter config --enable-windows-desktop
-#        working-directory: forum_mobile
+      #        working-directory: forum_mobile
 
       - name: 运行代码生成器
         run: dart run build_runner build
 
       - name: 编译windows
         run: flutter build windows
-#        working-directory: forum_mobile
+      #        working-directory: forum_mobile
 
       - name: 压缩生成的文件
         run: |
           $sourceFolder = "build\windows\x64\runner\Release"
           $destinationPath = "MoeKey-${{ needs.pre-build.outputs.APP_VERSION }}-windows-x86_64-release.zip"
           Compress-Archive -Path $sourceFolder -DestinationPath $destinationPath
-#        working-directory: forum_mobile
-
+      #        working-directory: forum_mobile
       - name: 上传到工作流程
         uses: actions/upload-artifact@v2
         with:
           name: build-windows
           path: "MoeKey-${{ needs.pre-build.outputs.APP_VERSION }}-windows-x86_64-release.zip"
+
+  build-macos:
+    name: 编译macOS
+    runs-on: macos-latest
+    needs: [pre-build]
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v3
+
+      - name: 设置Flutter环境
+        uses: subosito/flutter-action@v2
+        with:
+          channel: "stable"
+
+      - name: 安装依赖项
+        run: flutter pub get
+      #        working-directory: forum_mobile
+
+      - name: 启动桌面
+        run: flutter config --enable-macos-desktop
+      #        working-directory: forum_mobile
+
+      - name: 运行代码生成器
+        run: dart run build_runner build
+
+      - name: 编译macOS
+        run: flutter build macos
+      #        working-directory: forum_mobile
+
+      - name: 压缩生成的文件
+        run: |
+          cd build/macos/Build/Products/Release
+          zip -rq MoeKey-${{ needs.pre-build.outputs.APP_VERSION }}-macOS-universal-release.zip MoeKey.app
+          mv MoeKey-${{ needs.pre-build.outputs.APP_VERSION }}-macOS-universal-release.zip $GITHUB_WORKSPACE
+          mkdir dmg && cp -r MoeKey.app dmg
+          hdiutil create -volname "MoeKey" -srcfolder dmg -ov -format UDRW MoeKey.dmg
+          hdiutil attach MoeKey.dmg
+          cp $GITHUB_WORKSPACE/assets/favicon.icns /Volumes/MoeKey/.VolumeIcon.icns
+          SetFile -c icnC /Volumes/MoeKey/.VolumeIcon.icns
+          SetFile -a C /Volumes/MoeKey
+          hdiutil detach /Volumes/MoeKey
+          hdiutil convert MoeKey.dmg -format UDZO -o MoeKey-${{ needs.pre-build.outputs.APP_VERSION }}-macOS-universal-release.dmg
+          mv MoeKey-${{ needs.pre-build.outputs.APP_VERSION }}-macOS-universal-release.dmg $GITHUB_WORKSPACE
+
+      #        working-directory: forum_mobile
+      - name: 上传到工作流程
+        uses: actions/upload-artifact@v2
+        with:
+          name: build-macos
+          path: |
+            MoeKey-${{ needs.pre-build.outputs.APP_VERSION }}-macOS-universal-release.zip
+            MoeKey-${{ needs.pre-build.outputs.APP_VERSION }}-macOS-universal-release.dmg
+
   release:
     name: 上传包
-    needs: [build-apk, build-linux, build-windows,pre-build]
+    needs: [build-apk, build-linux, build-windows, build-macos, pre-build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -185,6 +237,12 @@ jobs:
           name: build-windows
           path: artifact
 
+      - name: 下载macOS
+        uses: actions/download-artifact@v2
+        with:
+          name: build-macos
+          path: artifact
+
       - name: 创建releases
         id: create_release
         uses: softprops/action-gh-release@v1
@@ -192,4 +250,3 @@ jobs:
           tag_name: ${{ needs.pre-build.outputs.APP_VERSION }}
           files: ./artifact/*
           body: "[CHANGELOG.md](CHANGELOG.md)"
-
